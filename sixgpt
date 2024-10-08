@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# 显示 ziqing logo
+echo "================================================="
+echo "███████╗██╗██████╗ ██╗ ██████╗ ██╗███╗   ██╗"
+echo "██╔════╝██║██╔══██╗██║██╔═══██╗██║████╗  ██║"
+echo "█████╗  ██║██████╔╝██║██║   ██║██║██╔██╗ ██║"
+echo "██╔══╝  ██║██╔═══╝ ██║██║   ██║██║██║╚██╗██║"
+echo "██║     ██║██║     ██║╚██████╔╝██║██║ ╚████║"
+echo "╚═╝     ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝"
+echo "               ziqing"
+echo "================================================="
+
+# Step 1: 更新系统并安装 Docker
+echo "正在更新系统并安装 Docker..."
+sudo apt update -y && sudo apt upgrade -y
+for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do sudo apt-get remove -y $pkg; done
+
+sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt update -y && sudo apt upgrade -y
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# 检查 Docker 是否安装成功
+docker --version
+
+# Step 2: 创建 SixGPT 目录
+mkdir -p ~/sixgpt
+cd ~/sixgpt
+
+# Step 3: 设置环境变量
+read -p "请输入你的 VANA 私钥: " vana_private_key
+export VANA_PRIVATE_KEY=$vana_private_key
+export VANA_NETWORK=satori
+
+# Step 4: 创建 docker-compose.yml 文件
+cat <<EOL >docker-compose.yml
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:0.3.12
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+ 
+  sixgpt3:
+    image: sixgpt/miner:latest
+    ports:
+      - "3015:3000"
+    depends_on:
+      - ollama
+    environment:
+      - VANA_PRIVATE_KEY=\${VANA_PRIVATE_KEY}
+      - VANA_NETWORK=\${VANA_NETWORK}
+    restart: always
+
+volumes:
+  ollama:
+EOL
+
+echo "docker-compose.yml 文件已创建。"
+
+# Step 5: 启动 SixGPT 矿工
+echo "正在启动 SixGPT 矿工..."
+docker compose up -d
+
+# Step 6: 检查日志
+echo "启动成功！查看矿工日志："
+docker compose logs -fn 100
