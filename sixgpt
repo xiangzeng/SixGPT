@@ -36,7 +36,14 @@ cd ~/sixgpt
 # Step 3: 设置环境变量
 read -p "请输入你的 VANA 私钥: " vana_private_key
 export VANA_PRIVATE_KEY=$vana_private_key
-export VANA_NETWORK=satori
+
+# 添加对 VANA 网络类型的输入和校验
+read -p "请输入 Vana 网络类型 (satori 或 moksha): " vana_network
+while [[ "$vana_network" != "satori" && "$vana_network" != "moksha" ]]; do
+    echo "无效的输入。请输入 'satori' 或 'moksha'。"
+    read -p "请输入 Vana 网络类型 (satori 或 moksha): " vana_network
+done
+export VANA_NETWORK=$vana_network
 
 # Step 4: 创建 docker-compose.yml 文件
 cat <<EOL >docker-compose.yml
@@ -68,10 +75,16 @@ EOL
 
 echo "docker-compose.yml 文件已创建。"
 
-# Step 5: 启动 SixGPT 矿工
+# Step 5: 清理 RAM 缓存
+echo "正在清理 RAM 缓存..."
+sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
+echo "RAM 缓存已清理。"
+
+# Step 6: 启动 SixGPT 矿工
 echo "正在启动 SixGPT 矿工..."
 docker compose up -d
 
-# Step 6: 检查日志
+# Step 7: 检查日志
 echo "启动成功！查看矿工日志："
 docker compose logs -fn 100
+
