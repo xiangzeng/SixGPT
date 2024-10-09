@@ -11,70 +11,132 @@ echo "╚═╝     ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚�
 echo "               ziqing"
 echo "================================================="
 
-# 系统更新及 RAM 缓存清理函数
-function system_update_and_clean() {
-    echo "正在更新系统并清理 RAM 缓存..."
-    sudo apt update -y && sudo apt upgrade -y
-    sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
-    echo "RAM 缓存已清理。"
-}
-
 # 主菜单函数
 function main_menu() {
     while true; do
         clear
+        echo "================================================================"
+        echo "退出脚本，请按键盘 ctrl + C 退出即可"
         echo "请选择要执行的操作:"
         echo "1) 启动节点"
         echo "2) 查看日志"
         echo "3) 删除节点"
-        echo "4) 清理 RAM 缓存"
-        echo "5) 退出"
+        echo "4) 退出"
         
         read -p "请输入选择的数字: " choice
         
         case $choice in
-            1) start_node ;;
-            2) view_logs ;;
-            3) delete_node ;;
-            4) clean_ram_cache ;;
-            5) echo "退出脚本。"; exit 0 ;;
-            *) echo "无效选择，请重试。"; read -p "按任意键继续..." ;;
+            1)
+                start_node
+                ;;
+            2)
+                view_logs
+                ;;
+            3)
+                delete_node
+                ;;
+            4)
+                echo "退出脚本。"
+                exit 0
+                ;;
+            *)
+                echo "无效选择，请重试。"
+                read -p "按任意键继续..."
+                ;;
         esac
     done
 }
 
 # 启动节点的函数
 function start_node() {
-    system_update_and_clean
+    # 更新软件包列表并升级已安装的软件包
+    sudo apt update -y && sudo apt upgrade -y
+
+    # 安装所需的依赖包
+    sudo apt install -y ca-certificates zlib1g-dev libncurses5-dev libgdbm-dev \
+    libnss3-dev tmux iptables curl nvme-cli git wget make jq libleveldb-dev \
+    build-essential pkg-config ncdu tar clang bsdmainutils lsb-release \
+    libssl-dev libreadline-dev libffi-dev jq gcc screen unzip lz4
 
     # 检查 Docker 是否已安装
     if ! command -v docker &> /dev/null; then
         echo "Docker 未安装，正在安装 Docker..."
-        sudo apt-get install -y ca-certificates curl gnupg
-        sudo install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-        sudo chmod a+r /etc/apt/keyrings/docker.gpg
-        sudo apt update -y && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        
+        # 安装 Docker
+        sudo apt install -y apt-transport-https ca-certificates curl software-properties-common
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+        sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+        sudo apt update -y
+        sudo apt install -y docker-ce
+
+        # 启动 Docker 服务
+        sudo systemctl start docker
+        sudo systemctl enable docker
+
         echo "Docker 安装完成！"
     else
         echo "Docker 已安装，跳过安装。"
     fi
 
+    # 检查 Docker Compose 是否已安装
+    if ! command -v docker-compose &> /dev/null; then
+        echo "Docker Compose 未安装，正在安装 Docker Compose..."
+        
+        # 获取最新版本号并安装 Docker Compose
+        VER=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d '"' -f 4)
+        curl -L "https://github.com/docker/compose/releases/download/$VER/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        chmod +x /usr/local/bin/docker-compose
+
+        echo "Docker Compose 安装完成！"
+    else
+        echo "Docker Compose 已安装，跳过安装。"
+    fi
+
+    # 显示 Docker Compose 版本
+    docker-compose --version
+
+    # 添加当前用户到 Docker 组
+    if ! getent group docker > /dev/null; then
+        echo "正在创建 Docker 组..."
+        sudo groupadd docker
+    fi
+
+    echo "正在将用户 $USER 添加到 Docker 组..."
+    sudo usermod -aG docker $USER
+
+    # 创建目录并设置环境变量
     mkdir -p ~/sixgpt
     cd ~/sixgpt
 
-    read -p "请输入你的 VANA 私钥: " vana_private_key
-    export VANA_PRIVATE_KEY=$vana_private_key
+    # 提示用户输入私钥和选择网络
+    read -p "请输入您的私钥 (your_private_key): " PRIVATE_KEY
+    export VANA_PRIVATE_KEY=$PRIVATE_KEY
 
-    read -p "请输入 Vana 网络类型 (satori 或 moksha): " vana_network
-    while [[ "$vana_network" != "satori" && "$vana_network" != "moksha" ]]; do
-        echo "无效的输入。请输入 'satori' 或 'moksha'。"
-        read -p "请输入 Vana 网络类型 (satori 或 moksha): " vana_network
-    done
-    export VANA_NETWORK=$vana_network
+    # 选择网络
+    echo "请选择网络 (输入数字 1 或 2):"
+    echo "1) satori"
+    echo "2) moksha"
+    read -p "请输入选择的数字: " NETWORK_CHOICE
 
-    cat <<EOL >docker-compose.yml
+    case $NETWORK_CHOICE in
+        1)
+            export VANA_NETWORK="satori"
+            ;;
+        2)
+            export VANA_NETWORK="moksha"
+            ;;
+        *)
+            echo "无效选择，默认选择 satori。"
+            export VANA_NETWORK="satori"
+            ;;
+    esac
+
+    echo "已选择网络: $VANA_NETWORK"
+
+    # 创建 docker-compose.yml 文件
+    cat <<EOL > docker-compose.yml
 version: '3.8'
+
 services:
   ollama:
     image: ollama/ollama:0.3.12
@@ -83,6 +145,7 @@ services:
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped
+ 
   sixgpt3:
     image: sixgpt/miner:latest
     ports:
@@ -93,36 +156,36 @@ services:
       - VANA_PRIVATE_KEY=\${VANA_PRIVATE_KEY}
       - VANA_NETWORK=\${VANA_NETWORK}
     restart: always
+
 volumes:
   ollama:
 EOL
 
-    echo "正在启动 SixGPT 矿工..."
-    docker compose up -d
-    echo "SixGPT 矿工已启动！"
+    # 启动 Docker Compose
+    echo "正在启动 Docker Compose..."
+    docker-compose up -d
+    echo "Docker Compose 启动完成！"
+    echo "所有操作完成！请重新登录以应用组更改。"
+
     read -p "按任意键返回主菜单..."
 }
 
 # 查看日志的函数
 function view_logs() {
     echo "正在查看 Docker Compose 日志..."
-    docker compose logs -fn 100
+    docker-compose logs -fn 100
     read -p "按任意键返回主菜单..."
 }
 
 # 删除节点的函数
 function delete_node() {
-    echo "正在停止并删除所有 Docker Compose 服务..."
-    docker compose down
-    echo "所有 Docker Compose 服务已停止并删除。"
-    read -p "按任意键返回主菜单..."
-}
+    echo "正在进入 /root/sixgpt 目录..."
+    cd /root/sixgpt || { echo "目录不存在！"; return; }
 
-# 清理 RAM 缓存的函数
-function clean_ram_cache() {
-    echo "正在清理 RAM 缓存..."
-    sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
-    echo "RAM 缓存已清理。"
+    echo "正在停止所有 Docker Compose 服务..."
+    docker-compose down
+    echo "所有 Docker Compose 服务已停止！"
+    
     read -p "按任意键返回主菜单..."
 }
 
