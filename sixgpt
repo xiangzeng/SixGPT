@@ -11,44 +11,67 @@ echo "╚═╝     ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚�
 echo "               ziqing"
 echo "================================================="
 
-# Step 1: 更新系统并安装 Docker
-echo "正在更新系统并安装 Docker..."
-sudo apt update -y && sudo apt upgrade -y
-for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do sudo apt-get remove -y $pkg; done
+# 检查是否以root用户运行脚本
+if [ "$(id -u)" != "0" ]; then
+    echo "此脚本需要以root用户权限运行。"
+    echo "请使用 'sudo -i' 切换到root用户后再次运行此脚本。"
+    exit 1
+fi
 
-sudo apt-get install -y ca-certificates curl gnupg
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
+# 主菜单函数
+function main_menu() {
+    while true; do
+        clear
+        echo "欢迎使用 Ziqing 主菜单，请选择以下操作:"
+        echo "1) 启动节点"
+        echo "2) 查看日志"
+        echo "3) 删除节点"
+        echo "4) 退出"
+        
+        read -p "请输入选择的数字: " choice
+        
+        case $choice in
+            1) start_node ;;
+            2) view_logs ;;
+            3) delete_node ;;
+            4) echo "退出脚本。"; exit 0 ;;
+            *) echo "无效选择，请重试。"; read -p "按任意键继续..." ;;
+        esac
+    done
+}
 
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+# 启动节点的函数
+function start_node() {
+    echo "正在更新系统并安装 Docker..."
+    sudo apt update -y && sudo apt upgrade -y
+    for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do sudo apt-get remove -y $pkg; done
 
-sudo apt update -y && sudo apt upgrade -y
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    sudo apt-get install -y ca-certificates curl gnupg
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt update -y && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-# 检查 Docker 是否安装成功
-docker --version
+    # 检查 Docker 是否安装成功
+    docker --version
 
-# Step 2: 创建 SixGPT 目录
-mkdir -p ~/sixgpt
-cd ~/sixgpt
+    # 创建目录并设置环境变量
+    mkdir -p ~/sixgpt
+    cd ~/sixgpt
 
-# Step 3: 设置环境变量
-read -p "请输入你的 VANA 私钥: " vana_private_key
-export VANA_PRIVATE_KEY=$vana_private_key
+    read -p "请输入您的 VANA 私钥: " vana_private_key
+    export VANA_PRIVATE_KEY=$vana_private_key
 
-# 添加对 VANA 网络类型的输入和校验
-read -p "请输入 Vana 网络类型 (satori 或 moksha): " vana_network
-while [[ "$vana_network" != "satori" && "$vana_network" != "moksha" ]]; do
-    echo "无效的输入。请输入 'satori' 或 'moksha'。"
     read -p "请输入 Vana 网络类型 (satori 或 moksha): " vana_network
-done
-export VANA_NETWORK=$vana_network
+    while [[ "$vana_network" != "satori" && "$vana_network" != "moksha" ]]; do
+        echo "无效的输入。请输入 'satori' 或 'moksha'。"
+        read -p "请输入 Vana 网络类型 (satori 或 moksha): " vana_network
+    done
+    export VANA_NETWORK=$vana_network
 
-# Step 4: 创建 docker-compose.yml 文件
-cat <<EOL >docker-compose.yml
+    cat <<EOL >docker-compose.yml
 version: '3.8'
-
 services:
   ollama:
     image: ollama/ollama:0.3.12
@@ -57,7 +80,6 @@ services:
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped
- 
   sixgpt3:
     image: sixgpt/miner:latest
     ports:
@@ -68,23 +90,33 @@ services:
       - VANA_PRIVATE_KEY=\${VANA_PRIVATE_KEY}
       - VANA_NETWORK=\${VANA_NETWORK}
     restart: always
-
 volumes:
   ollama:
 EOL
 
-echo "docker-compose.yml 文件已创建。"
+    # 启动 Docker Compose
+    echo "正在启动 Docker Compose..."
+    docker compose up -d
+    echo "Docker Compose 启动完成！"
+    echo "所有操作完成！请重新登录以应用组更改。"
 
-# Step 5: 清理 RAM 缓存
-echo "正在清理 RAM 缓存..."
-sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
-echo "RAM 缓存已清理。"
+    read -p "按任意键返回主菜单..."
+}
 
-# Step 6: 启动 SixGPT 矿工
-echo "正在启动 SixGPT 矿工..."
-docker compose up -d
+# 查看日志的函数
+function view_logs() {
+    echo "正在查看 Docker Compose 日志..."
+    docker compose logs -fn 100
+    read -p "按任意键返回主菜单..."
+}
 
-# Step 7: 检查日志
-echo "启动成功！查看矿工日志："
-docker compose logs -fn 100
+# 删除节点的函数
+function delete_node() {
+    echo "正在停止并移除所有 Docker Compose 服务..."
+    docker compose down
+    echo "所有 Docker Compose 服务已停止并移除！"
+    read -p "按任意键返回主菜单..."
+}
 
+# 调用主菜单函数
+main_menu
