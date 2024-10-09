@@ -11,6 +11,14 @@ echo "╚═╝     ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚�
 echo "               ziqing"
 echo "================================================="
 
+# 系统更新及 RAM 缓存清理函数
+function system_update_and_clean() {
+    echo "正在更新系统并清理 RAM 缓存..."
+    sudo apt update -y && sudo apt upgrade -y
+    sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
+    echo "RAM 缓存已清理。"
+}
+
 # 主菜单函数
 function main_menu() {
     while true; do
@@ -37,21 +45,20 @@ function main_menu() {
 
 # 启动节点的函数
 function start_node() {
-    echo "正在更新系统并安装 Docker..."
-    sudo apt update -y && sudo apt upgrade -y
-    for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do sudo apt-get remove -y $pkg; done
+    system_update_and_clean
 
-    sudo apt-get install -y ca-certificates curl gnupg
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-    sudo apt update -y && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-    # 检查 Docker 是否安装成功
-    docker --version
+    # 检查 Docker 是否已安装
+    if ! command -v docker &> /dev/null; then
+        echo "Docker 未安装，正在安装 Docker..."
+        sudo apt-get install -y ca-certificates curl gnupg
+        sudo install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        sudo chmod a+r /etc/apt/keyrings/docker.gpg
+        sudo apt update -y && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        echo "Docker 安装完成！"
+    else
+        echo "Docker 已安装，跳过安装。"
+    fi
 
     mkdir -p ~/sixgpt
     cd ~/sixgpt
@@ -68,7 +75,6 @@ function start_node() {
 
     cat <<EOL >docker-compose.yml
 version: '3.8'
-
 services:
   ollama:
     image: ollama/ollama:0.3.12
@@ -77,7 +83,6 @@ services:
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped
- 
   sixgpt3:
     image: sixgpt/miner:latest
     ports:
@@ -88,7 +93,6 @@ services:
       - VANA_PRIVATE_KEY=\${VANA_PRIVATE_KEY}
       - VANA_NETWORK=\${VANA_NETWORK}
     restart: always
-
 volumes:
   ollama:
 EOL
@@ -124,4 +128,3 @@ function clean_ram_cache() {
 
 # 调用主菜单函数
 main_menu
-
