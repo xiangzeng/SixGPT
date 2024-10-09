@@ -11,22 +11,16 @@ echo "╚═╝     ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚�
 echo "               ziqing"
 echo "================================================="
 
-# 检查是否以root用户运行脚本
-if [ "$(id -u)" != "0" ]; then
-    echo "此脚本需要以root用户权限运行。"
-    echo "请使用 'sudo -i' 切换到root用户后再次运行此脚本。"
-    exit 1
-fi
-
 # 主菜单函数
 function main_menu() {
     while true; do
         clear
-        echo "欢迎使用 Ziqing 主菜单，请选择以下操作:"
+        echo "请选择要执行的操作:"
         echo "1) 启动节点"
         echo "2) 查看日志"
         echo "3) 删除节点"
-        echo "4) 退出"
+        echo "4) 清理 RAM 缓存"
+        echo "5) 退出"
         
         read -p "请输入选择的数字: " choice
         
@@ -34,7 +28,8 @@ function main_menu() {
             1) start_node ;;
             2) view_logs ;;
             3) delete_node ;;
-            4) echo "退出脚本。"; exit 0 ;;
+            4) clean_ram_cache ;;
+            5) echo "退出脚本。"; exit 0 ;;
             *) echo "无效选择，请重试。"; read -p "按任意键继续..." ;;
         esac
     done
@@ -50,17 +45,18 @@ function start_node() {
     sudo install -m 0755 -d /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
     sudo apt update -y && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
     # 检查 Docker 是否安装成功
     docker --version
 
-    # 创建目录并设置环境变量
     mkdir -p ~/sixgpt
     cd ~/sixgpt
 
-    read -p "请输入您的 VANA 私钥: " vana_private_key
+    read -p "请输入你的 VANA 私钥: " vana_private_key
     export VANA_PRIVATE_KEY=$vana_private_key
 
     read -p "请输入 Vana 网络类型 (satori 或 moksha): " vana_network
@@ -72,6 +68,7 @@ function start_node() {
 
     cat <<EOL >docker-compose.yml
 version: '3.8'
+
 services:
   ollama:
     image: ollama/ollama:0.3.12
@@ -80,6 +77,7 @@ services:
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped
+ 
   sixgpt3:
     image: sixgpt/miner:latest
     ports:
@@ -90,16 +88,14 @@ services:
       - VANA_PRIVATE_KEY=\${VANA_PRIVATE_KEY}
       - VANA_NETWORK=\${VANA_NETWORK}
     restart: always
+
 volumes:
   ollama:
 EOL
 
-    # 启动 Docker Compose
-    echo "正在启动 Docker Compose..."
+    echo "正在启动 SixGPT 矿工..."
     docker compose up -d
-    echo "Docker Compose 启动完成！"
-    echo "所有操作完成！请重新登录以应用组更改。"
-
+    echo "SixGPT 矿工已启动！"
     read -p "按任意键返回主菜单..."
 }
 
@@ -112,11 +108,20 @@ function view_logs() {
 
 # 删除节点的函数
 function delete_node() {
-    echo "正在停止并移除所有 Docker Compose 服务..."
+    echo "正在停止并删除所有 Docker Compose 服务..."
     docker compose down
-    echo "所有 Docker Compose 服务已停止并移除！"
+    echo "所有 Docker Compose 服务已停止并删除。"
+    read -p "按任意键返回主菜单..."
+}
+
+# 清理 RAM 缓存的函数
+function clean_ram_cache() {
+    echo "正在清理 RAM 缓存..."
+    sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"
+    echo "RAM 缓存已清理。"
     read -p "按任意键返回主菜单..."
 }
 
 # 调用主菜单函数
 main_menu
+
