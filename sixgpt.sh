@@ -86,7 +86,7 @@ services:
   sixgpt3:
     image: sixgpt/miner:latest
     ports:
-      - "3000:3000"
+      - "3015:3000"
     depends_on:
       - ollama
     environment:
