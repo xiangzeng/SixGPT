@@ -93,7 +93,7 @@ services:
       - VANA_PRIVATE_KEY=\${VANA_PRIVATE_KEY}
       - VANA_NETWORK=\${VANA_NETWORK}
       - OLLAMA_API_URL=http://ollama:11434/api
-    restart: no
+    restart: unless-stopped
 
 volumes:
   ollama:
